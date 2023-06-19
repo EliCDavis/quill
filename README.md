@@ -21,7 +21,7 @@ type NastyData struct {
 }
 ```
 
-Let's say we wanted to sum all the data found in the `FloatArr` field. To do that, we only needed read only access to that specific field in the data-structure and nothing else. To do that would then declare our view as:
+Let's say we wanted to sum all the data found in the `FloatArr` field. To do that, we only need read only access to that specific field in the data-structure and nothing else. To do that, we would declare our view as:
 
 ```golang
 type FloatView struct {
