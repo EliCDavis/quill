@@ -8,48 +8,16 @@ import (
 	"github.com/EliCDavis/iter"
 )
 
-// READING ====================================================================
-
-func populateIterator(source, view reflect.Value) {
-	// sourceElement := source.Elem()
-	// sourceElementType := sourceElement.Type()
-
-	newIter := iter.Array(source.Interface().([]string))
-	view.Set(reflect.ValueOf(newIter))
-}
-
-func PopulateView(source, view any) {
-	sourceValue := reflect.ValueOf(source)
-	sourceKind := sourceValue.Kind()
-	if sourceKind == reflect.Pointer {
-		panic("populating a view with a pointer to a source is not supported yet")
-	}
-
-	if sourceKind != reflect.Struct {
-		panic(fmt.Errorf("views can not be populated by sources of type: %s", sourceKind.String()))
-	}
-
-	viewPointerValue := reflect.ValueOf(view)
-	viewPointerKind := viewPointerValue.Kind()
-	if viewPointerKind != reflect.Pointer {
-		panic("populating a view with a non-pointer to a source is not supported")
-	}
-
-	viewValue := viewPointerValue.Elem()
-	viewKind := viewValue.Kind()
-	if viewKind != reflect.Struct {
-		panic(fmt.Errorf("views of type: '%s' can not be populated", viewKind.String()))
-	}
-
-	viewType := viewValue.Type()
+func populateViewStructs(source, view reflect.Value) {
+	viewType := view.Type()
 	for i := 0; i < viewType.NumField(); i++ {
-		viewFieldValue := viewValue.Field(i)
+		viewFieldValue := view.Field(i)
 		structField := viewType.Field(i)
 		if !viewFieldValue.CanSet() {
 			panic(fmt.Errorf("view contains the field (%s) that can not be assigned to. did you not pass a pointer?", structField.Name))
 		}
 
-		sourceField, ok := getValueByName(sourceValue, structField.Name)
+		sourceField, ok := getValueByName(source, structField.Name)
 		if !ok {
 			panic(fmt.Errorf("source does not contain a field named: '%s' to populate view", structField.Name))
 		}
@@ -77,8 +45,43 @@ func PopulateView(source, view any) {
 			perm.inject(sourceField)
 			continue
 		}
+
+		if viewFieldValueKind == reflect.Struct && sourceFieldKind == reflect.Struct {
+			populateViewStructs(sourceField, viewFieldValue)
+			continue
+		}
+
+		panic(fmt.Errorf("unimplemented scenario where view's field '%s' is type %s and source is type %s", structField.Name, viewFieldValueKind.String(), sourceFieldKind.String()))
 	}
 }
+
+func PopulateView(source, view any) {
+	sourceValue := reflect.ValueOf(source)
+	sourceKind := sourceValue.Kind()
+	if sourceKind == reflect.Pointer {
+		panic("populating a view with a pointer to a source is not supported yet")
+	}
+
+	if sourceKind != reflect.Struct {
+		panic(fmt.Errorf("views can not be populated by sources of type: %s", sourceKind.String()))
+	}
+
+	viewPointerValue := reflect.ValueOf(view)
+	viewPointerKind := viewPointerValue.Kind()
+	if viewPointerKind != reflect.Pointer {
+		panic("populating a view with a non-pointer to a source is not supported")
+	}
+
+	viewValue := viewPointerValue.Elem()
+	viewKind := viewValue.Kind()
+	if viewKind != reflect.Struct {
+		panic(fmt.Errorf("views of type: '%s' can not be populated", viewKind.String()))
+	}
+
+	populateViewStructs(sourceValue, viewValue)
+}
+
+// READING ====================================================================
 
 func ReadArray[T any](collection CollectionReadPermission, path string) iter.ArrayIterator[T] {
 	return Read[*ArrayReadPermission[T]](collection, path).Value()
