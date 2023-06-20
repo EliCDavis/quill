@@ -26,6 +26,10 @@ func (awp *ArrayWritePermission[T]) clear() {
 	awp.data = nil
 }
 
+func (awp ArrayWritePermission[T]) Type() PermissionType {
+	return WritePermissionType
+}
+
 type WritePermission[T any] struct {
 	data    T
 	written bool
@@ -38,4 +42,8 @@ func (wp WritePermission[T]) Data() T {
 func (wp *WritePermission[T]) Write(val T) {
 	wp.data = val
 	wp.written = true
+}
+
+func (awp WritePermission[T]) Type() PermissionType {
+	return WritePermissionType
 }
