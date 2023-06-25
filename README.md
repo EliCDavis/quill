@@ -1,5 +1,5 @@
 # Quill
-![Coverage](https://img.shields.io/badge/Coverage-69.5%25-yellow)
+![Coverage](https://img.shields.io/badge/Coverage-71.0%25-brightgreen)
 
 Scheduler of operations on in-memory data. The rabbit hole has gone to far.
 
