@@ -130,3 +130,54 @@ func TestDataSourceReadCommandWithStructTags(t *testing.T) {
 	// ASSERT =================================================================
 	assert.Equal(t, 6., sum)
 }
+
+func TestDataSourceReadCommandOnMap(t *testing.T) {
+	// ASSERT =================================================================
+	type DoubleView struct {
+		Data struct {
+			Test []int
+		}
+	}
+
+	type SumView struct {
+		Data struct {
+			Test *quill.ArrayReadPermission[int]
+		}
+	}
+
+	data := struct {
+		Data map[string][]int
+	}{
+		Data: map[string][]int{
+			"Test":  {1, 2, 3},
+			"Other": {4, 5, 6},
+		},
+	}
+	dataSource := quill.NewDataSource(data)
+	sum := 0
+
+	// ACT ====================================================================
+	dataSource.Run(
+		&quill.ViewCommand[DoubleView]{
+			Action: func(view DoubleView) error {
+				for i, v := range view.Data.Test {
+					view.Data.Test[i] = v * 2
+				}
+				return nil
+			},
+		},
+		&quill.ViewCommand[SumView]{
+			Action: func(view SumView) error {
+				floatData := view.Data.Test.Value()
+				for i := 0; i < floatData.Len(); i++ {
+					sum += floatData.At(i)
+				}
+				return nil
+			},
+		},
+	)
+	dataSource.Close()
+
+	// ASSERT =================================================================
+	assert.Equal(t, 12, sum)
+}

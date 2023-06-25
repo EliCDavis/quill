@@ -85,7 +85,6 @@ func (ds *DataSource[T]) RunSequentially(commands ...Command) {
 }
 
 func (ds *DataSource[T]) Run(commands ...Command) {
-	// ds.commandsToSchedule.Push(commands...)
 	ds.wg.Add(len(commands))
 	for _, c := range commands {
 		ds.commandsToSchedule <- c

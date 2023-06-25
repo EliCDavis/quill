@@ -17,6 +17,59 @@ func getValueByName(val reflect.Value, name string) (reflect.Value, bool) {
 	return reflect.Value{}, false
 }
 
+func populateViewStructsFromMap(source, view reflect.Value) {
+	viewType := view.Type()
+
+	sourceFieldKind := source.Kind()
+	if sourceFieldKind != reflect.Map {
+		panic(fmt.Errorf("source is not a map to process, is instead: '%s", sourceFieldKind.String()))
+	}
+
+	for i := 0; i < viewType.NumField(); i++ {
+		viewFieldValue := view.Field(i)
+		structField := viewType.Field(i)
+		if !viewFieldValue.CanSet() {
+			panic(fmt.Errorf("view contains the field (%s) that can not be assigned to. did you not pass a pointer?", structField.Name))
+		}
+
+		sourceName := structField.Name
+		if altName, ok := structField.Tag.Lookup("quill"); ok {
+			sourceName = altName
+		}
+		sourceField := source.MapIndex(reflect.ValueOf(sourceName))
+		sourceFieldKind := sourceField.Kind()
+		viewFieldValueKind := viewFieldValue.Kind()
+
+		// View is requesting write access to an array from the source data
+		if sourceFieldKind == reflect.Slice && viewFieldValueKind == reflect.Slice {
+			viewFieldValue.Set(sourceField)
+			continue
+		}
+
+		// View is requesting read only access
+		if viewFieldValueKind == reflect.Pointer {
+			newPtr := reflect.New(viewFieldValue.Type().Elem())
+			viewFieldValue.Set(newPtr)
+
+			i := viewFieldValue.Interface()
+			perm, ok := i.(Permission)
+			if !ok {
+				panic(fmt.Errorf("view field '%s' is an interface but not a permission which is not allowed", structField.Name))
+			}
+
+			perm.inject(sourceField)
+			continue
+		}
+
+		if viewFieldValueKind == reflect.Struct && sourceFieldKind == reflect.Struct {
+			populateViewStructs(sourceField, viewFieldValue)
+			continue
+		}
+
+		panic(fmt.Errorf("unimplemented scenario where view's field '%s' is type %s and source is type %s", structField.Name, viewFieldValueKind.String(), sourceFieldKind.String()))
+	}
+}
+
 func populateViewStructs(source, view reflect.Value) {
 	viewType := view.Type()
 	for i := 0; i < viewType.NumField(); i++ {
@@ -64,6 +117,11 @@ func populateViewStructs(source, view reflect.Value) {
 			continue
 		}
 
+		if viewFieldValueKind == reflect.Struct && sourceFieldKind == reflect.Map {
+			populateViewStructsFromMap(sourceField, viewFieldValue)
+			continue
+		}
+
 		panic(fmt.Errorf("unimplemented scenario where view's field '%s' is type %s and source is type %s", structField.Name, viewFieldValueKind.String(), sourceFieldKind.String()))
 	}
 }
@@ -94,6 +152,75 @@ func PopulateView(source, view any) {
 	populateViewStructs(sourceValue, viewValue)
 }
 
+func permissionsStructFromMap(path string, source, view reflect.Value) map[string]PermissionType {
+	permissions := make(map[string]PermissionType)
+	viewType := view.Type()
+
+	if source.Kind() != reflect.Map {
+		panic(fmt.Errorf("source is not a map to process, is instead: '%s", source.Kind().String()))
+	}
+
+	for i := 0; i < viewType.NumField(); i++ {
+		viewFieldValue := view.Field(i)
+		structField := viewType.Field(i)
+		if !viewFieldValue.CanSet() {
+			panic(fmt.Errorf("view contains the field (%s) that can not be assigned to. did you not pass a pointer?", structField.Name))
+		}
+
+		sourceName := structField.Name
+		if altName, ok := structField.Tag.Lookup("quill"); ok {
+			sourceName = altName
+		}
+
+		sourceField := source.MapIndex(reflect.ValueOf(sourceName))
+		sourceFieldKind := sourceField.Kind()
+		viewFieldValueKind := viewFieldValue.Kind()
+
+		// View is requesting write access to an array from the source data
+		if sourceFieldKind == reflect.Slice && viewFieldValueKind == reflect.Slice {
+			permissions[fmt.Sprintf("%s.%s", path, structField.Name)] = WritePermissionType
+			continue
+		}
+
+		// View is requesting read only access for a specific data type
+		if viewFieldValueKind == reflect.Pointer {
+			newPtr := reflect.New(viewFieldValue.Type().Elem())
+			viewFieldValue.Set(newPtr)
+
+			i := viewFieldValue.Interface()
+			perm, ok := i.(Permission)
+			if !ok {
+				panic(fmt.Errorf("view field '%s' is an interface but not a permission which is not allowed", structField.Name))
+			}
+
+			permissions[fmt.Sprintf("%s.%s", path, structField.Name)] = perm.Type()
+			continue
+		}
+
+		if viewFieldValueKind == reflect.Struct && sourceFieldKind == reflect.Struct {
+			subPermissions := permissionsStruct(fmt.Sprintf("%s.%s", path, structField.Name), sourceField, viewFieldValue)
+			for key, val := range subPermissions {
+				permissions[key] = val
+			}
+
+			continue
+		}
+
+		// We want specific read/write access to a source's map
+		if viewFieldValueKind == reflect.Struct && sourceFieldKind == reflect.Map {
+			subPermissions := permissionsStructFromMap(fmt.Sprintf("%s.%s", path, structField.Name), sourceField, viewFieldValue)
+			for key, val := range subPermissions {
+				permissions[key] = val
+			}
+
+			continue
+		}
+
+		panic(fmt.Errorf("unimplemented scenario where view's field '%s' is type %s and source is type %s", structField.Name, viewFieldValueKind.String(), sourceFieldKind.String()))
+	}
+	return permissions
+}
+
 func permissionsStruct(path string, source, view reflect.Value) map[string]PermissionType {
 	permissions := make(map[string]PermissionType)
 	viewType := view.Type()
@@ -122,7 +249,7 @@ func permissionsStruct(path string, source, view reflect.Value) map[string]Permi
 			continue
 		}
 
-		// View is requesting read only access
+		// View is requesting read only access for a specific data type
 		if viewFieldValueKind == reflect.Pointer {
 			newPtr := reflect.New(viewFieldValue.Type().Elem())
 			viewFieldValue.Set(newPtr)
@@ -139,6 +266,16 @@ func permissionsStruct(path string, source, view reflect.Value) map[string]Permi
 
 		if viewFieldValueKind == reflect.Struct && sourceFieldKind == reflect.Struct {
 			subPermissions := permissionsStruct(fmt.Sprintf("%s.%s", path, structField.Name), sourceField, viewFieldValue)
+			for key, val := range subPermissions {
+				permissions[key] = val
+			}
+
+			continue
+		}
+
+		// We want specific read/write access to a source's map
+		if viewFieldValueKind == reflect.Struct && sourceFieldKind == reflect.Map {
+			subPermissions := permissionsStructFromMap(fmt.Sprintf("%s.%s", path, structField.Name), sourceField, viewFieldValue)
 			for key, val := range subPermissions {
 				permissions[key] = val
 			}

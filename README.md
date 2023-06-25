@@ -1,4 +1,5 @@
 # Quill
+
 ![Coverage](https://img.shields.io/badge/Coverage-71.0%25-brightgreen)
 
 Scheduler of operations on in-memory data. The rabbit hole has gone to far.
@@ -30,6 +31,14 @@ type FloatView struct {
 }
 ```
 
+Alternatively, if you don't want to match the view's struct field name to the source's struct field name, you can use tags:
+
+```golang
+type FloatView struct {
+    DataToSum *quill.ArrayReadPermission[float64] `quill:"FloatArr"`
+}
+```
+
 And then to actually perform our query:
 
 ```golang
@@ -56,6 +65,60 @@ dataSource.Run(&quill.ViewCommand[FloatView]{
 dataSource.Wait()
 
 log.Print(sum) // prints '6'
+```
+
+### Maps
+
+You can also request specific read/write access to entries of maps found within source data. Given our source data looks something like:
+
+```golang
+type CSVData struct {
+    Title   string
+    Columns map[string][]float64
+}
+```
+
+We can index specific columns of the CSV data simply by defining them in the view struct
+
+```golang
+type TaxCalculationView struct {
+    Columns struct {
+        BasePrice  *quill.ArrayReadPermission[float64]
+        TaxRate    *quill.ArrayReadPermission[float64]
+        TotalPrice []float64                            // Write access to Total Price Column
+    }
+}
+```
+
+And then running our commands over our source data looks practically the same.
+
+```golang
+dataSource := quill.NewDataSource(CSVData{
+    Columns: map[string][]float64{
+        "BasePrice":  []float64{10.,   12.,  22.},
+        "TaxRate":    []float64{0.07, 0.08, 0.09},
+        "TotalPrice": []float64{},
+    }
+})
+
+dataSource.Run(&quill.ViewCommand[TaxCalculationView]{
+    Action: func(view TaxCalculationView) error {
+        basePrice := view.Columns.BasePrice.Value()
+        taxRate := view.Columns.TaxRate.Value()
+
+        if basePrice.Len() != taxRate.Len() {
+            return fmt.Error("mismatched column lengths")
+        }
+
+        totalPrice := view.Columns.TotalPrice
+        for i := 0; i < floatData.Len(); i++ {
+            initialPrice := basePrice.At(i)
+            totalPrice[i] = initialPrice + (initialPrice * taxRate.At(i))
+        }
+        return nil
+    },
+})
+dataSource.Wait()
 ```
 
 ## Profiling
