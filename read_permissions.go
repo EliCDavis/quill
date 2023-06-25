@@ -21,7 +21,7 @@ func ReadItem[T any](collection CollectionReadPermission, path string) T {
 func Read[T Permission](collection CollectionReadPermission, path string) T {
 	key := path
 
-	splitIndex := strings.Index(path, "/")
+	splitIndex := strings.Index(path, ".")
 	if splitIndex != -1 {
 		key = path[:splitIndex]
 	}
@@ -97,12 +97,6 @@ func (rcp CollectionReadPermission) Type() PermissionType {
 }
 
 // ARRAY ======================================================================
-
-// type ArrayReadPermission[T any] interface {
-// 	inject(val reflect.Value)
-// 	clear()
-// 	Value() iter.ArrayIterator[T]
-// }
 
 type ArrayReadPermission[T any] struct {
 	data []T

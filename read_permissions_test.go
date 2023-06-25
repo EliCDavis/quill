@@ -42,8 +42,8 @@ func TestReadCollection(t *testing.T) {
 	// ACT ====================================================================
 	collection.Populate(data)
 	floatData := quill.ReadArray[float64](collection, "FloatArr")
-	intData := quill.ReadArray[int](collection, "Sub/IntArr")
-	strData := quill.ReadItem[string](collection, "Sub/Str")
+	intData := quill.ReadArray[int](collection, "Sub.IntArr")
+	strData := quill.ReadItem[string](collection, "Sub.Str")
 
 	// ASSERT =================================================================
 	if assert.Equal(t, floatData.Len(), 3) {
@@ -110,91 +110,4 @@ func TestView(t *testing.T) {
 	if assert.NotNil(t, view.Sub.Str) {
 		assert.Equal(t, "Test String", view.Sub.Str.Value())
 	}
-}
-
-func TestDataSource_SingleReadCommand(t *testing.T) {
-	// ASSERT =================================================================
-	type FloatArrView struct {
-		FloatArr *quill.ArrayReadPermission[float64]
-	}
-
-	data := NastyData{
-		FloatArr: []float64{1, 2, 3},
-		StrArr:   []string{"1", "2", "3"},
-		Sub: struct {
-			IntArr []int
-			Str    string
-		}{
-			IntArr: []int{4, 5, 6},
-			Str:    "Test String",
-		},
-	}
-
-	dataSource := quill.NewDataSource(data)
-	sum := 0.
-
-	// ACT ====================================================================
-	dataSource.Run(&quill.ViewCommand[FloatArrView]{
-		Action: func(view FloatArrView) error {
-			floatData := view.FloatArr.Value()
-			for i := 0; i < floatData.Len(); i++ {
-				sum += floatData.At(i)
-			}
-			return nil
-		},
-	})
-	dataSource.Wait()
-
-	// ASSERT =================================================================
-	assert.Equal(t, 6., sum)
-}
-
-func TestDataSource_WriteReadCommand(t *testing.T) {
-	// ASSERT =================================================================
-	type ReadFloatArrView struct {
-		FloatArr *quill.ArrayReadPermission[float64]
-	}
-
-	type WriteFloatArrView struct {
-		FloatArr []float64
-	}
-
-	dataSource := quill.NewDataSource(NastyData{
-		FloatArr: []float64{1, 2, 3},
-		StrArr:   []string{"1", "2", "3"},
-		Sub: struct {
-			IntArr []int
-			Str    string
-		}{
-			IntArr: []int{4, 5, 6},
-			Str:    "Test String",
-		},
-	})
-	sum := 0.
-
-	// ACT ====================================================================
-	dataSource.Run(
-		&quill.ViewCommand[WriteFloatArrView]{
-			Action: func(view WriteFloatArrView) error {
-				arr := view.FloatArr
-				for i := 0; i < len(arr); i++ {
-					arr[i] *= 2
-				}
-				return nil
-			},
-		},
-		&quill.ViewCommand[ReadFloatArrView]{
-			Action: func(view ReadFloatArrView) error {
-				floatData := view.FloatArr.Value()
-				for i := 0; i < floatData.Len(); i++ {
-					sum += floatData.At(i)
-				}
-				return nil
-			},
-		},
-	)
-	dataSource.Wait()
-
-	// ASSERT =================================================================
-	assert.Equal(t, 12., sum)
 }

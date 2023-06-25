@@ -1,7 +1,10 @@
 package quill
 
 import (
+	"context"
+	"fmt"
 	"runtime"
+	"runtime/trace"
 	"sync"
 	"time"
 )
@@ -29,24 +32,26 @@ type dataSourceWorkerJob struct {
 	permissions map[string]PermissionType
 }
 
-func dataSourceWorker(permissionTable *PermissionTable, wg *sync.WaitGroup, sourceData any, jobs <-chan dataSourceWorkerJob) {
+func dataSourceWorker(index int, permissionTable *PermissionTable, wg *sync.WaitGroup, sourceData any, jobs <-chan dataSourceWorkerJob) {
+	ctx, task := trace.NewTask(context.Background(), fmt.Sprintf("datasourceWorker-%d", index))
 	for job := range jobs {
 		PopulateView(sourceData, job.commandData)
-		job.command.Run()
+		trace.WithRegion(ctx, "command", func() { job.command.Run() })
 		permissionTable.Clear(job.permissions)
 		wg.Done()
 	}
+	task.End()
 }
 
 func dataSourceScheduler(data any, wg *sync.WaitGroup, commands <-chan Command) {
 	permissionTable := NewPermissionTable()
 
 	numWorkers := runtime.NumCPU()
-	// numWorkers = 1
+	// numWorkers = 2
 
 	jobs := make(chan dataSourceWorkerJob, 1000)
 	for i := 0; i < numWorkers; i++ {
-		go dataSourceWorker(permissionTable, wg, data, jobs)
+		go dataSourceWorker(i, permissionTable, wg, data, jobs)
 	}
 
 	for command := range commands {
@@ -68,6 +73,7 @@ func dataSourceScheduler(data any, wg *sync.WaitGroup, commands <-chan Command) 
 			commandData: commandData,
 		}
 	}
+	close(jobs)
 }
 
 func (ds *DataSource[T]) RunSequentially(commands ...Command) {
@@ -88,4 +94,9 @@ func (ds *DataSource[T]) Run(commands ...Command) {
 
 func (ds *DataSource[T]) Wait() {
 	ds.wg.Wait()
+}
+
+func (ds *DataSource[T]) Close() {
+	ds.Wait()
+	close(ds.commandsToSchedule)
 }

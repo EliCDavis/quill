@@ -26,9 +26,13 @@ func populateViewStructs(source, view reflect.Value) {
 			panic(fmt.Errorf("view contains the field (%s) that can not be assigned to. did you not pass a pointer?", structField.Name))
 		}
 
-		sourceField, ok := getValueByName(source, structField.Name)
+		sourceName := structField.Name
+		if altName, ok := structField.Tag.Lookup("quill"); ok {
+			sourceName = altName
+		}
+		sourceField, ok := getValueByName(source, sourceName)
 		if !ok {
-			panic(fmt.Errorf("source does not contain a field named: '%s' to populate view", structField.Name))
+			panic(fmt.Errorf("source does not contain a field named: '%s' to populate view", sourceName))
 		}
 
 		sourceFieldKind := sourceField.Kind()
@@ -100,9 +104,13 @@ func permissionsStruct(path string, source, view reflect.Value) map[string]Permi
 			panic(fmt.Errorf("view contains the field (%s) that can not be assigned to. did you not pass a pointer?", structField.Name))
 		}
 
-		sourceField, ok := getValueByName(source, structField.Name)
+		sourceName := structField.Name
+		if altName, ok := structField.Tag.Lookup("quill"); ok {
+			sourceName = altName
+		}
+		sourceField, ok := getValueByName(source, sourceName)
 		if !ok {
-			panic(fmt.Errorf("source does not contain a field named: '%s' to populate view", structField.Name))
+			panic(fmt.Errorf("source does not contain a field named: '%s' to populate view", sourceName))
 		}
 
 		sourceFieldKind := sourceField.Kind()

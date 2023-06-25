@@ -1,4 +1,5 @@
 # Quill
+
 ![Coverage](https://img.shields.io/badge/Coverage-73.6%25-brightgreen)
 
 Scheduler of operations on in-memory data. The rabbit hole has gone to far.
@@ -33,7 +34,7 @@ type FloatView struct {
 And then to actually perform our query:
 
 ```golang
-// Create a new data source that wraps our data structure we want to 
+// Create a new data source that wraps our data structure we want to
 // parallelize queries against and initialize with dummy data for sake of the
 // example
 dataSource := quill.NewDataSource(NastyData{
@@ -44,7 +45,7 @@ sum := 0.
 
 dataSource.Run(&quill.ViewCommand[FloatView]{
     Action: func(view FloatView) error {
-        // All read-only array data is wrapped in an iterator to prevent us 
+        // All read-only array data is wrapped in an iterator to prevent us
         // from making any changes to it
         floatData := view.FloatArr.Value()
         for i := 0; i < floatData.Len(); i++ {
@@ -53,6 +54,16 @@ dataSource.Run(&quill.ViewCommand[FloatView]{
         return nil
     },
 })
+dataSource.Wait()
 
 log.Print(sum) // prints '6'
+```
+
+## Profiling
+
+The data source uses `runtime/trace` to help track how well operations are getting parallelized over it.
+
+```
+go test . -trace trace.out
+go tool trace trace.out
 ```
