@@ -1,12 +1,8 @@
 package quill
 
 import (
-	"context"
-	"fmt"
 	"runtime"
-	"runtime/trace"
 	"sync"
-	"time"
 )
 
 type DataSource[T any] struct {
@@ -16,9 +12,13 @@ type DataSource[T any] struct {
 }
 
 func NewDataSource[T any](data T) *DataSource[T] {
+	return NewDataSourceWithPoolSize[T](data, runtime.NumCPU())
+}
+
+func NewDataSourceWithPoolSize[T any](data T, pool int) *DataSource[T] {
 	c := make(chan Command, 10)
 	wg := &sync.WaitGroup{}
-	go dataSourceScheduler(data, wg, c)
+	go dataSourceScheduler(data, wg, c, pool)
 	return &DataSource[T]{
 		data:               data,
 		commandsToSchedule: c,
@@ -32,24 +32,34 @@ type dataSourceWorkerJob struct {
 	permissions map[string]PermissionType
 }
 
-func dataSourceWorker(index int, permissionTable *PermissionTable, wg *sync.WaitGroup, sourceData any, jobs <-chan dataSourceWorkerJob) {
-	ctx, task := trace.NewTask(context.Background(), fmt.Sprintf("datasourceWorker-%d", index))
+func dataSourceWorker(
+	index int,
+	permissionTable *PermissionTable,
+	wg *sync.WaitGroup,
+	sourceData any,
+	jobs <-chan *dataSourceWorkerJob,
+) {
+	// ctx, task := trace.NewTask(context.Background(), fmt.Sprintf("datasourceWorker-%d", index))
 	for job := range jobs {
 		PopulateView(sourceData, job.commandData)
-		trace.WithRegion(ctx, "command", func() { job.command.Run() })
+		// trace.WithRegion(ctx, "command", func() { job.command.Run() })
+		job.command.Run()
 		permissionTable.Clear(job.permissions)
 		wg.Done()
 	}
-	task.End()
+	// task.End()
 }
 
-func dataSourceScheduler(data any, wg *sync.WaitGroup, commands <-chan Command) {
+func dataSourceScheduler(data any, wg *sync.WaitGroup, commands <-chan Command, poolSize int) {
 	permissionTable := NewPermissionTable()
 
-	numWorkers := runtime.NumCPU()
+	numWorkers := poolSize
+	if numWorkers > 1 {
+		numWorkers -= 1 // Leave one cpu unallocated for the scheduler goroutine
+	}
 	// numWorkers = 2
 
-	jobs := make(chan dataSourceWorkerJob, 1000)
+	jobs := make(chan *dataSourceWorkerJob, 1000)
 	for i := 0; i < numWorkers; i++ {
 		go dataSourceWorker(i, permissionTable, wg, data, jobs)
 	}
@@ -63,11 +73,15 @@ func dataSourceScheduler(data any, wg *sync.WaitGroup, commands <-chan Command) 
 				break
 			}
 
-			// TODO: Use a channel to wait for the permissionTable itself to
-			// have changed instead of a stupid sleep (maybe take advantage of WaitGroup?)
-			time.Sleep(time.Millisecond)
+			// TODO: Be smarter about waiting until it's valid to try to add again.
+			version := permissionTable.Version()
+			newVersion := version
+			for version == newVersion {
+				newVersion = permissionTable.Version()
+			}
 		}
-		jobs <- dataSourceWorkerJob{
+
+		jobs <- &dataSourceWorkerJob{
 			command:     command,
 			permissions: commandsPermission,
 			commandData: commandData,

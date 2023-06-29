@@ -107,11 +107,11 @@ dataSource.Run(&quill.ViewCommand[TaxCalculationView]{
         taxRate := view.Columns.TaxRate.Value()
 
         if basePrice.Len() != taxRate.Len() {
-            return fmt.Error("mismatched column lengths")
+            return errors.New("mismatched column lengths")
         }
 
         totalPrice := view.Columns.TotalPrice
-        for i := 0; i < floatData.Len(); i++ {
+        for i := 0; i < basePrice.Len(); i++ {
             initialPrice := basePrice.At(i)
             totalPrice[i] = initialPrice + (initialPrice * taxRate.At(i))
         }

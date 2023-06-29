@@ -131,7 +131,7 @@ func TestDataSourceReadCommandWithStructTags(t *testing.T) {
 	assert.Equal(t, 6., sum)
 }
 
-func TestDataSourceReadCommandOnMap(t *testing.T) {
+func TestDataSourceReadWriteCommandOnMap(t *testing.T) {
 	// ASSERT =================================================================
 	type DoubleView struct {
 		Data struct {
@@ -181,3 +181,57 @@ func TestDataSourceReadCommandOnMap(t *testing.T) {
 	// ASSERT =================================================================
 	assert.Equal(t, 12, sum)
 }
+
+// func TestDataSource_ReadWriteCommandOnMap_AppendDataToMap(t *testing.T) {
+// 	// ASSERT =================================================================
+// 	type CalculateTaxBurdenView struct {
+// 		Columns struct {
+// 			BasePrice   *quill.ArrayReadPermission[float64]
+// 			TaxRate     *quill.ArrayReadPermission[float64]
+// 			FinalPrices []float64
+// 		}
+// 	}
+
+// 	type SumFinalPrices struct {
+// 		Columns struct {
+// 			FinalPrices []float64
+// 		}
+// 	}
+
+// 	csv := struct {
+// 		Title   string
+// 		Columns map[string][]float64
+// 	}{
+// 		Columns: map[string][]float64{
+// 			"BasePrice": {},
+// 			"TaxRate":   {},
+// 		},
+// 	}
+// 	dataSource := quill.NewDataSource(csv)
+// 	sum := 0
+
+// 	// ACT ====================================================================
+// 	dataSource.Run(
+// 		&quill.ViewCommand[CalculateTaxBurdenView]{
+// 			Action: func(view CalculateTaxBurdenView) error {
+// 				// for i, v := range view.Data.Test {
+// 				// 	view.Data.Test[i] = v * 2
+// 				// }
+// 				return nil
+// 			},
+// 		},
+// 		&quill.ViewCommand[SumFinalPrices]{
+// 			Action: func(view SumFinalPrices) error {
+// 				// floatData := view.Data.Test.Value()
+// 				// for i := 0; i < floatData.Len(); i++ {
+// 				// 	sum += floatData.At(i)
+// 				// }
+// 				return nil
+// 			},
+// 		},
+// 	)
+// 	dataSource.Close()
+
+// 	// ASSERT =================================================================
+// 	assert.Equal(t, 12, sum)
+// }
