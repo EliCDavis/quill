@@ -30,7 +30,7 @@ func TestDataSourceSingleReadCommand(t *testing.T) {
 
 	// ACT ====================================================================
 	dataSource.Run(&quill.ViewCommand[FloatArrView]{
-		Action: func(view FloatArrView) error {
+		Action: func(view *FloatArrView) error {
 			floatData := view.FloatArr.Value()
 			for i := 0; i < floatData.Len(); i++ {
 				sum += floatData.At(i)
@@ -70,7 +70,7 @@ func TestDataSourceWriteReadCommand(t *testing.T) {
 	// ACT ====================================================================
 	dataSource.Run(
 		&quill.ViewCommand[WriteFloatArrView]{
-			Action: func(view WriteFloatArrView) error {
+			Action: func(view *WriteFloatArrView) error {
 				arr := view.FloatArr
 				for i := 0; i < len(arr); i++ {
 					arr[i] *= 2
@@ -79,7 +79,7 @@ func TestDataSourceWriteReadCommand(t *testing.T) {
 			},
 		},
 		&quill.ViewCommand[ReadFloatArrView]{
-			Action: func(view ReadFloatArrView) error {
+			Action: func(view *ReadFloatArrView) error {
 				floatData := view.FloatArr.Value()
 				for i := 0; i < floatData.Len(); i++ {
 					sum += floatData.At(i)
@@ -116,7 +116,7 @@ func TestDataSourceReadCommandWithStructTags(t *testing.T) {
 	// ACT ====================================================================
 	dataSource.Run(
 		&quill.ViewCommand[SumView]{
-			Action: func(view SumView) error {
+			Action: func(view *SumView) error {
 				floatData := view.DataToSum.Value()
 				for i := 0; i < floatData.Len(); i++ {
 					sum += floatData.At(i)
@@ -159,7 +159,7 @@ func TestDataSourceReadWriteCommandOnMap(t *testing.T) {
 	// ACT ====================================================================
 	dataSource.Run(
 		&quill.ViewCommand[DoubleView]{
-			Action: func(view DoubleView) error {
+			Action: func(view *DoubleView) error {
 				for i, v := range view.Data.Test {
 					view.Data.Test[i] = v * 2
 				}
@@ -167,7 +167,7 @@ func TestDataSourceReadWriteCommandOnMap(t *testing.T) {
 			},
 		},
 		&quill.ViewCommand[SumView]{
-			Action: func(view SumView) error {
+			Action: func(view *SumView) error {
 				floatData := view.Data.Test.Value()
 				for i := 0; i < floatData.Len(); i++ {
 					sum += floatData.At(i)
@@ -182,56 +182,64 @@ func TestDataSourceReadWriteCommandOnMap(t *testing.T) {
 	assert.Equal(t, 12, sum)
 }
 
-// func TestDataSource_ReadWriteCommandOnMap_AppendDataToMap(t *testing.T) {
-// 	// ASSERT =================================================================
-// 	type CalculateTaxBurdenView struct {
-// 		Columns struct {
-// 			BasePrice   *quill.ArrayReadPermission[float64]
-// 			TaxRate     *quill.ArrayReadPermission[float64]
-// 			FinalPrices []float64
-// 		}
-// 	}
+func TestDataSource_ReadWriteCommandOnMap_AppendDataToMap(t *testing.T) {
+	// ASSERT =================================================================
+	type CalculateTaxBurdenView struct {
+		Columns struct {
+			BasePrice   *quill.ArrayReadPermission[float64]
+			TaxRate     *quill.ArrayReadPermission[float64]
+			FinalPrices []float64
+		}
+	}
 
-// 	type SumFinalPrices struct {
-// 		Columns struct {
-// 			FinalPrices []float64
-// 		}
-// 	}
+	type SumFinalPrices struct {
+		Columns struct {
+			FinalPrices *quill.ArrayReadPermission[float64]
+		}
+	}
 
-// 	csv := struct {
-// 		Title   string
-// 		Columns map[string][]float64
-// 	}{
-// 		Columns: map[string][]float64{
-// 			"BasePrice": {},
-// 			"TaxRate":   {},
-// 		},
-// 	}
-// 	dataSource := quill.NewDataSource(csv)
-// 	sum := 0
+	csv := struct {
+		Title   string
+		Columns map[string][]float64
+	}{
+		Title: "My Taxes",
+		Columns: map[string][]float64{
+			"BasePrice": {10., 20., 50.},
+			"TaxRate":   {.2, .15, .08},
+		},
+	}
+	dataSource := quill.NewDataSource(csv)
+	sum := 0.
 
-// 	// ACT ====================================================================
-// 	dataSource.Run(
-// 		&quill.ViewCommand[CalculateTaxBurdenView]{
-// 			Action: func(view CalculateTaxBurdenView) error {
-// 				// for i, v := range view.Data.Test {
-// 				// 	view.Data.Test[i] = v * 2
-// 				// }
-// 				return nil
-// 			},
-// 		},
-// 		&quill.ViewCommand[SumFinalPrices]{
-// 			Action: func(view SumFinalPrices) error {
-// 				// floatData := view.Data.Test.Value()
-// 				// for i := 0; i < floatData.Len(); i++ {
-// 				// 	sum += floatData.At(i)
-// 				// }
-// 				return nil
-// 			},
-// 		},
-// 	)
-// 	dataSource.Close()
+	// ACT ====================================================================
+	dataSource.Run(
+		&quill.ViewCommand[CalculateTaxBurdenView]{
+			Action: func(view *CalculateTaxBurdenView) error {
+				basePrice := view.Columns.BasePrice.Value()
+				taxRate := view.Columns.TaxRate.Value()
+				finalPrice := make([]float64, basePrice.Len())
 
-// 	// ASSERT =================================================================
-// 	assert.Equal(t, 12, sum)
-// }
+				for i := 0; i < basePrice.Len(); i++ {
+					finalPrice[i] = basePrice.At(i) + (basePrice.At(i) * taxRate.At(i))
+				}
+
+				view.Columns.FinalPrices = finalPrice
+
+				return nil
+			},
+		},
+		&quill.ViewCommand[SumFinalPrices]{
+			Action: func(view *SumFinalPrices) error {
+				finalPrices := view.Columns.FinalPrices.Value()
+				for i := 0; i < finalPrices.Len(); i++ {
+					sum += finalPrices.At(i)
+				}
+				return nil
+			},
+		},
+	)
+	dataSource.Close()
+
+	// ASSERT =================================================================
+	assert.Equal(t, 89., sum)
+}

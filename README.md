@@ -52,7 +52,7 @@ dataSource := quill.NewDataSource(NastyData{
 sum := 0.
 
 dataSource.Run(&quill.ViewCommand[FloatView]{
-    Action: func(view FloatView) error {
+    Action: func(view *FloatView) error {
         // All read-only array data is wrapped in an iterator to prevent us
         // from making any changes to it
         floatData := view.FloatArr.Value()
@@ -78,14 +78,20 @@ type CSVData struct {
 }
 ```
 
-We can index specific columns of the CSV data simply by defining them in the view struct
+We can index specific columns of the CSV data simply by defining them in the view struct. If we have a struct field in our view that has no corresponding key in the source's map, a key will end up being created.
 
 ```golang
-type TaxCalculationView struct {
+type CalculateTaxBurdenView struct {
     Columns struct {
-        BasePrice  *quill.ArrayReadPermission[float64]
-        TaxRate    *quill.ArrayReadPermission[float64]
-        TotalPrice []float64                            // Write access to Total Price Column
+        BasePrice   *quill.ArrayReadPermission[float64]
+        TaxRate     *quill.ArrayReadPermission[float64]
+        FinalPrices []float64
+    }
+}
+
+type SumFinalPrices struct {
+    Columns struct {
+        FinalPrices *quill.ArrayReadPermission[float64]
     }
 }
 ```
@@ -94,30 +100,40 @@ And then running our commands over our source data looks practically the same.
 
 ```golang
 dataSource := quill.NewDataSource(CSVData{
+    Title: "My Taxes",
     Columns: map[string][]float64{
         "BasePrice":  []float64{10.,   12.,  22.},
         "TaxRate":    []float64{0.07, 0.08, 0.09},
-        "TotalPrice": []float64{},
     }
 })
 
-dataSource.Run(&quill.ViewCommand[TaxCalculationView]{
-    Action: func(view TaxCalculationView) error {
-        basePrice := view.Columns.BasePrice.Value()
-        taxRate := view.Columns.TaxRate.Value()
+sum := 0.
+dataSource.Run(
+    &quill.ViewCommand[CalculateTaxBurdenView]{
+        Action: func(view *CalculateTaxBurdenView) error {
+            basePrice := view.Columns.BasePrice.Value()
+            taxRate := view.Columns.TaxRate.Value()
+            finalPrice := make([]float64, basePrice.Len())
 
-        if basePrice.Len() != taxRate.Len() {
-            return errors.New("mismatched column lengths")
-        }
+            for i := 0; i < basePrice.Len(); i++ {
+                finalPrice[i] = basePrice.At(i) + (basePrice.At(i) * taxRate.At(i))
+            }
 
-        totalPrice := view.Columns.TotalPrice
-        for i := 0; i < basePrice.Len(); i++ {
-            initialPrice := basePrice.At(i)
-            totalPrice[i] = initialPrice + (initialPrice * taxRate.At(i))
-        }
-        return nil
+            view.Columns.FinalPrices = finalPrice
+
+            return nil
+        },
     },
-})
+    &quill.ViewCommand[SumFinalPrices]{
+        Action: func(view *SumFinalPrices) error {
+            finalPrices := view.Columns.FinalPrices.Value()
+            for i := 0; i < finalPrices.Len(); i++ {
+                sum += finalPrices.At(i)
+            }
+            return nil
+        },
+    },
+)
 dataSource.Wait()
 ```
 

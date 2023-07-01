@@ -7,11 +7,11 @@ type Command interface {
 
 type ViewCommand[T any] struct {
 	populatedData T
-	Action        func(T) error
+	Action        func(*T) error
 }
 
-func (vc ViewCommand[T]) Run() error {
-	return vc.Action(vc.populatedData)
+func (vc *ViewCommand[T]) Run() error {
+	return vc.Action(&vc.populatedData)
 }
 
 func (vc *ViewCommand[T]) data() any {

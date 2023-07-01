@@ -5,6 +5,19 @@ import (
 	"reflect"
 )
 
+type postQueryOperation interface {
+	apply()
+}
+
+type updateMapPostQueryOperation struct {
+	mapSource, mapKey, mapVal reflect.Value
+	field                     int
+}
+
+func (umqo updateMapPostQueryOperation) apply() {
+	umqo.mapSource.SetMapIndex(umqo.mapKey, umqo.mapVal.Field(umqo.field))
+}
+
 func getValueByName(val reflect.Value, name string) (reflect.Value, bool) {
 	t := val.Type()
 	for i := 0; i < t.NumField(); i++ {
@@ -17,13 +30,15 @@ func getValueByName(val reflect.Value, name string) (reflect.Value, bool) {
 	return reflect.Value{}, false
 }
 
-func populateViewStructsFromMap(source, view reflect.Value) {
+func populateViewStructsFromMap(source, view reflect.Value) []postQueryOperation {
 	viewType := view.Type()
 
 	sourceFieldKind := source.Kind()
 	if sourceFieldKind != reflect.Map {
 		panic(fmt.Errorf("source is not a map to process, is instead: '%s", sourceFieldKind.String()))
 	}
+
+	ops := make([]postQueryOperation, 0)
 
 	for i := 0; i < viewType.NumField(); i++ {
 		viewFieldValue := view.Field(i)
@@ -36,13 +51,26 @@ func populateViewStructsFromMap(source, view reflect.Value) {
 		if altName, ok := structField.Tag.Lookup("quill"); ok {
 			sourceName = altName
 		}
-		sourceField := source.MapIndex(reflect.ValueOf(sourceName))
+		sourceField, mapHasKey := getMapValue(source, reflect.ValueOf(sourceName))
 		sourceFieldKind := sourceField.Kind()
 		viewFieldValueKind := viewFieldValue.Kind()
 
 		// View is requesting write access to an array from the source data
-		if sourceFieldKind == reflect.Slice && viewFieldValueKind == reflect.Slice {
+		if viewFieldValueKind == reflect.Slice && sourceFieldKind == reflect.Slice {
 			viewFieldValue.Set(sourceField)
+			continue
+		}
+
+		if viewFieldValueKind == reflect.Slice && !mapHasKey {
+			newMapVal := reflect.New(viewFieldValue.Type()).Elem()
+			source.SetMapIndex(reflect.ValueOf(sourceName), newMapVal)
+			viewFieldValue.Set(newMapVal)
+			ops = append(ops, updateMapPostQueryOperation{
+				mapSource: source,
+				mapKey:    reflect.ValueOf(sourceName),
+				mapVal:    view,
+				field:     i,
+			})
 			continue
 		}
 
@@ -68,10 +96,15 @@ func populateViewStructsFromMap(source, view reflect.Value) {
 
 		panic(fmt.Errorf("unimplemented scenario where view's field '%s' is type %s and source is type %s", structField.Name, viewFieldValueKind.String(), sourceFieldKind.String()))
 	}
+
+	return ops
 }
 
-func populateViewStructs(source, view reflect.Value) {
+func populateViewStructs(source, view reflect.Value) []postQueryOperation {
 	viewType := view.Type()
+
+	ops := make([]postQueryOperation, 0)
+
 	for i := 0; i < viewType.NumField(); i++ {
 		viewFieldValue := view.Field(i)
 		structField := viewType.Field(i)
@@ -118,15 +151,28 @@ func populateViewStructs(source, view reflect.Value) {
 		}
 
 		if viewFieldValueKind == reflect.Struct && sourceFieldKind == reflect.Map {
-			populateViewStructsFromMap(sourceField, viewFieldValue)
+			mapOps := populateViewStructsFromMap(sourceField, viewFieldValue)
+			ops = append(ops, mapOps...)
 			continue
 		}
 
 		panic(fmt.Errorf("unimplemented scenario where view's field '%s' is type %s and source is type %s", structField.Name, viewFieldValueKind.String(), sourceFieldKind.String()))
 	}
+
+	return ops
 }
 
-func PopulateView(source, view any) {
+type ApplyChanges struct {
+	changes []postQueryOperation
+}
+
+func (ac ApplyChanges) Apply() {
+	for _, c := range ac.changes {
+		c.apply()
+	}
+}
+
+func PopulateView(source, view any) ApplyChanges {
 	sourceValue := reflect.ValueOf(source)
 	sourceKind := sourceValue.Kind()
 	if sourceKind == reflect.Pointer {
@@ -149,7 +195,21 @@ func PopulateView(source, view any) {
 		panic(fmt.Errorf("views of type: '%s' can not be populated", viewKind.String()))
 	}
 
-	populateViewStructs(sourceValue, viewValue)
+	return ApplyChanges{
+		changes: populateViewStructs(sourceValue, viewValue),
+	}
+}
+
+func getMapValue(mapSource, key reflect.Value) (reflect.Value, bool) {
+	iter := mapSource.MapRange()
+	for iter.Next() {
+		k := iter.Key()
+		v := iter.Value()
+		if k.Interface() == key.Interface() {
+			return v, true
+		}
+	}
+	return reflect.ValueOf(nil), false
 }
 
 func permissionsStructFromMap(path string, source, view reflect.Value) map[string]PermissionType {
@@ -167,17 +227,17 @@ func permissionsStructFromMap(path string, source, view reflect.Value) map[strin
 			panic(fmt.Errorf("view contains the field (%s) that can not be assigned to. did you not pass a pointer?", structField.Name))
 		}
 
-		sourceName := structField.Name
+		mapKeyName := structField.Name
 		if altName, ok := structField.Tag.Lookup("quill"); ok {
-			sourceName = altName
+			mapKeyName = altName
 		}
 
-		sourceField := source.MapIndex(reflect.ValueOf(sourceName))
+		sourceField, sourceContainsKey := getMapValue(source, reflect.ValueOf(mapKeyName))
 		sourceFieldKind := sourceField.Kind()
 		viewFieldValueKind := viewFieldValue.Kind()
 
-		// View is requesting write access to an array from the source data
-		if sourceFieldKind == reflect.Slice && viewFieldValueKind == reflect.Slice {
+		// View is requesting write access to an array from the map source data
+		if viewFieldValueKind == reflect.Slice && (!sourceContainsKey || sourceFieldKind == reflect.Slice) {
 			permissions[fmt.Sprintf("%s.%s", path, structField.Name)] = WritePermissionType
 			continue
 		}

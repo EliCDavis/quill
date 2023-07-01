@@ -41,9 +41,10 @@ func dataSourceWorker(
 ) {
 	// ctx, task := trace.NewTask(context.Background(), fmt.Sprintf("datasourceWorker-%d", index))
 	for job := range jobs {
-		PopulateView(sourceData, job.commandData)
+		applyChanges := PopulateView(sourceData, job.commandData)
 		// trace.WithRegion(ctx, "command", func() { job.command.Run() })
 		job.command.Run()
+		applyChanges.Apply()
 		permissionTable.Clear(job.permissions)
 		wg.Done()
 	}
