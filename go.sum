@@ -1,5 +1,7 @@
 github.com/EliCDavis/iter v1.0.1 h1:3Sd5SI+rTrYFbGIuVkcVddt7Y9b7FnEg6L2k0FfYspQ=
 github.com/EliCDavis/iter v1.0.1/go.mod h1:xZy1nTKVrfMY0J6Bj+bBO77JUEtwOK+kuhb8npwVHwE=
+github.com/EliCDavis/iter v1.0.2 h1:17An/C4iRWYr9e5sOcgUF2zbpflote2a+JUaNmOLSgA=
+github.com/EliCDavis/iter v1.0.2/go.mod h1:xZy1nTKVrfMY0J6Bj+bBO77JUEtwOK+kuhb8npwVHwE=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

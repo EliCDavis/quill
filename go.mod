@@ -3,7 +3,7 @@ module github.com/EliCDavis/quill
 go 1.20
 
 require (
-	github.com/EliCDavis/iter v1.0.1
+	github.com/EliCDavis/iter v1.0.2
 	github.com/stretchr/testify v1.8.4
 )
 

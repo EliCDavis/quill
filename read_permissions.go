@@ -10,7 +10,7 @@ import (
 
 // READING ====================================================================
 
-func ReadArray[T any](collection CollectionReadPermission, path string) iter.ArrayIterator[T] {
+func ReadArray[T any](collection CollectionReadPermission, path string) *iter.ArrayIterator[T] {
 	return Read[*ArrayReadPermission[T]](collection, path).Value()
 }
 
@@ -102,7 +102,7 @@ type ArrayReadPermission[T any] struct {
 	data []T
 }
 
-func (rdep ArrayReadPermission[T]) Value() iter.ArrayIterator[T] {
+func (rdep ArrayReadPermission[T]) Value() *iter.ArrayIterator[T] {
 	return iter.Array[T](rdep.data)
 }
 
